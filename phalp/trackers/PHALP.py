@@ -657,7 +657,7 @@ class PHALP(nn.Module):
             #os.system('wget https://github.com/classner/up/raw/821a390fbf87a522fb327fc46736eda0326e2a06/models/3D/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl')
             model_path = '4D-Humans/data/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl'  # Using local model path
 
-            convert_pkl('basicModel_neutral_lbs_10_207_0_v1.0.0.pkl')
+            convert_pkl(model_path)
             os.system('rm basicModel_neutral_lbs_10_207_0_v1.0.0.pkl')
             os.system('mv basicModel_neutral_lbs_10_207_0_v1.0.0_p3.pkl ' + smpl_path)
 
