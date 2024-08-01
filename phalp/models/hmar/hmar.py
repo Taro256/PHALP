@@ -49,12 +49,12 @@ class HMAR(nn.Module):
                                   pool='pooled').to(self.device)
         
     def load_weights(self, path):
-    checkpoint_file = torch.load(path, map_location=self.device)  # CUDAを指定する
-    state_dict_filt = {}
-    for k, v in checkpoint_file['model'].items():
-        if ("encoding_head" in k or "texture_head" in k or "backbone" in k or "smplx_head" in k): 
-            state_dict_filt.setdefault(k[5:].replace("smplx", "smpl"), v)
-    self.load_state_dict(state_dict_filt, strict=False)
+        checkpoint_file = torch.load(path, map_location=self.device)  # CUDAを指定する
+        state_dict_filt = {}
+        for k, v in checkpoint_file['model'].items():
+            if ("encoding_head" in k or "texture_head" in k or "backbone" in k or "smplx_head" in k): 
+                state_dict_filt.setdefault(k[5:].replace("smplx", "smpl"), v)
+        self.load_state_dict(state_dict_filt, strict=False)
 
 
     def forward(self, x):
