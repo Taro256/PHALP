@@ -17,39 +17,34 @@ class HMAR(nn.Module):
        
         self.cfg = cfg
 
-        # デバイスの指定
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        # 同様に他の変数も宣言
-        nz_feat, tex_size = 512, 6
-        img_H, img_W = 256, 256
+        nz_feat, tex_size    = 512, 6
+        img_H, img_W         = 256, 256
         
-        texture_file = np.load(self.cfg.SMPL.TEXTURE)
-        self.faces_cpu = texture_file['smpl_faces'].astype('uint32')
+        texture_file         = np.load(self.cfg.SMPL.TEXTURE)
+        self.faces_cpu       = texture_file['smpl_faces'].astype('uint32')
         
-        vt = texture_file['vt']
-        ft = texture_file['ft']
-        uv_sampler = compute_uvsampler(vt, ft, tex_size=tex_size)
-        uv_sampler = torch.tensor(uv_sampler, dtype=torch.float, device=self.device)  # GPUに移動
-        uv_sampler = uv_sampler.unsqueeze(0)
+        vt                   = texture_file['vt']
+        ft                   = texture_file['ft']
+        uv_sampler           = compute_uvsampler(vt, ft, tex_size=tex_size)
+        uv_sampler           = torch.tensor(uv_sampler, dtype=torch.float)
+        uv_sampler           = uv_sampler.unsqueeze(0)
 
-        # 以降のテンソルもGPUに移動
-        self.F = uv_sampler.size(1)   
-        self.T = uv_sampler.size(2) 
-        self.uv_sampler = uv_sampler.view(-1, self.F, self.T*self.T, 2).to(self.device)
-        self.backbone = resnet(pretrained=True, num_layers=self.cfg.MODEL.BACKBONE.NUM_LAYERS, cfg=self.cfg).to(self.device) # モデルをGPUに移動
-        self.texture_head = TextureHead(self.uv_sampler, self.cfg, img_H=img_H, img_W=img_W).to(self.device)
-        self.encoding_head = EncodingHead(cfg=self.cfg, img_H=img_H, img_W=img_W).to(self.device) 
+        self.F               = uv_sampler.size(1)   
+        self.T               = uv_sampler.size(2) 
+        self.uv_sampler      = uv_sampler.view(-1, self.F, self.T*self.T, 2)
+        self.backbone        = resnet(pretrained=True, num_layers=self.cfg.MODEL.BACKBONE.NUM_LAYERS, cfg=self.cfg)
+        self.texture_head    = TextureHead(self.uv_sampler, self.cfg, img_H=img_H, img_W=img_W)
+        self.encoding_head   = EncodingHead(cfg=self.cfg, img_H=img_H, img_W=img_W) 
 
-        smpl_cfg = {k.lower(): v for k,v in dict(cfg.SMPL).items()}
-        self.smpl = SMPL(**smpl_cfg).to(self.device)
+        smpl_cfg             = {k.lower(): v for k,v in dict(cfg.SMPL).items()}
+        self.smpl            = SMPL(**smpl_cfg)
         
-        self.smpl_head = SMPLHead(cfg, 
-                                  input_dim=cfg.MODEL.SMPL_HEAD.IN_CHANNELS,
-                                  pool='pooled').to(self.device)
+        self.smpl_head       = SMPLHead(cfg, 
+                                        input_dim=cfg.MODEL.SMPL_HEAD.IN_CHANNELS,
+                                        pool='pooled')
         
     def load_weights(self, path):
-        checkpoint_file = torch.load(path, map_location=self.device)  # CUDAを指定する
+        checkpoint_file = torch.load(path)
         state_dict_filt = {}
         for k, v in checkpoint_file['model'].items():
             if ("encoding_head" in k or "texture_head" in k or "backbone" in k or "smplx_head" in k): 
@@ -58,10 +53,9 @@ class HMAR(nn.Module):
 
 
     def forward(self, x):
-        x = x.to(self.device)  # 入力をGPUに移動
-        feats, skips = self.backbone(x)
-        flow = self.texture_head(skips)
-        uv_image = self.flow_to_texture(flow, x)
+        feats, skips    = self.backbone(x)
+        flow            = self.texture_head(skips)
+        uv_image        = self.flow_to_texture(flow, x)
         
         pose_embeddings = feats.max(3)[0].max(2)[0]
         pose_embeddings = pose_embeddings.view(x.size(0),-1)
@@ -69,14 +63,14 @@ class HMAR(nn.Module):
             pred_smpl_params, pred_cam, _ = self.smpl_head(pose_embeddings)
 
         out = {
-            "uv_image": uv_image,
-            "uv_vector": self.process_uv_image(uv_image),
-            "flow": flow,
-            "pose_emb": pose_embeddings,
-            "pose_smpl": pred_smpl_params,
-            "pred_cam": pred_cam,
+            "uv_image"  : uv_image, # raw uv_image
+            "uv_vector" : self.process_uv_image(uv_image), # preprocessed uv_image for the autoencoder
+            "flow"      : flow,
+            "pose_emb"  : pose_embeddings,
+            "pose_smpl" : pred_smpl_params,
+            "pred_cam"  : pred_cam,
         }
-        return out 
+        return out    
     
     def process_uv_image(self, uv_image):
         uv_mask         = uv_image[:, 3:, :, :]
